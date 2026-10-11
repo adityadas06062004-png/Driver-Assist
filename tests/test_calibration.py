@@ -34,7 +34,6 @@ def test_good_calibration_sets_thresholds():
 
 
 def test_blink_rate_measured_when_enough_blinks():
-    plan = [(21, dict(ear=0.26))]
     cfg = Config()
     eng, cal = DrowsinessEngine(cfg), Calibrator(cfg)
     t = 0.0

@@ -90,3 +90,18 @@ class RiskScorer:
         deviation = abs(rate - base) / max(base, 5.0)
         c = self.config
         return _ramp(deviation, c.blink_dev_start, c.blink_dev_full)
+
+
+def dominant_cause(components: Dict[str, float], config: Config, nodding: bool = False) -> str:
+    """Which ingredient is pushing the score most right now, in plain words (used by the QA report)."""
+    c = config
+    parts = {
+        "eyes closed now": 100.0 * components.get("closure", 0.0),
+        "head down": 100.0 * c.nod_acute_level if nodding else 100.0 * c.w_nod * components.get("nod", 0.0),
+        "PERCLOS": 100.0 * c.w_perclos * components.get("perclos", 0.0),
+        "yawns": 100.0 * c.w_yawn * components.get("yawn", 0.0),
+        "blink rate": 100.0 * c.w_blink * components.get("blink", 0.0),
+    }
+    name, value = max(parts.items(), key=lambda kv: kv[1])
+    return name if value > 0 else "none"
+

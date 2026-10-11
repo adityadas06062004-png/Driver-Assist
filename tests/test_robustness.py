@@ -1,5 +1,3 @@
-import numpy as np
-import pytest
 
 from drowsiness import Calibration, FrameStats, Level, Monitor
 from helpers import FRAME, make_face

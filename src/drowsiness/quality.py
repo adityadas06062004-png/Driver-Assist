@@ -38,6 +38,36 @@ def brighten(frame_bgr: np.ndarray, brightness: float, target: float = 100.0) ->
     return cv2.LUT(frame_bgr, lut)
 
 
+class NightEnhancer:
+    """Software night mode for a dim webcam picture (no infrared needed).
+
+    Three steps: lift the brightness with a gamma curve, boost local contrast on the lightness
+    channel (CLAHE) so the eyes and mouth edges stand out, then mix in a little of the previous
+    frame to calm sensor noise. The blend is kept small on purpose, because a heavy average smears
+    fast blinks. It can only enhance what the sensor caught, so it helps in a dim room but cannot
+    replace an infrared camera in real darkness.
+    """
+
+    def __init__(self, clip: float = 3.0, blend: float = 0.3, target: float = 110.0) -> None:
+        self._clahe = cv2.createCLAHE(clipLimit=clip, tileGridSize=(8, 8))
+        self.blend = float(np.clip(blend, 0.0, 0.8))
+        self.target = target
+        self._prev: Optional[np.ndarray] = None
+
+    def reset(self) -> None:
+        self._prev = None
+
+    def apply(self, frame_bgr: np.ndarray, brightness: float) -> np.ndarray:
+        lifted = brighten(frame_bgr, brightness, target=self.target)
+        lab = cv2.cvtColor(lifted, cv2.COLOR_BGR2LAB)
+        lab[:, :, 0] = self._clahe.apply(lab[:, :, 0])
+        out = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+        if self._prev is not None and self._prev.shape == out.shape and self.blend > 0:
+            out = cv2.addWeighted(out, 1.0 - self.blend, self._prev, self.blend, 0)
+        self._prev = out
+        return out
+
+
 def _box(points: np.ndarray, w: int, h: int, pad: float = 0.0):
     x0, y0 = points.min(axis=0)
     x1, y1 = points.max(axis=0)

@@ -17,7 +17,7 @@ from .camera import Camera
 from .config import Config
 from .monitor import Monitor, MonitorState
 from .perf import FrameGovernor
-from .quality import FrameStats, brighten, measure, scene_brightness
+from .quality import FrameStats, NightEnhancer, brighten, measure, scene_brightness
 
 
 @dataclass
@@ -31,12 +31,16 @@ class Step:
 
 class Pipeline:
     def __init__(self, monitor: Monitor, camera: Camera, extractor, config: Optional[Config] = None,
+                 hands=None,
                  governor: Optional[FrameGovernor] = None,
                  clock: Callable[[], float] = time.monotonic,
                  perf_clock: Callable[[], float] = time.perf_counter) -> None:
         self.monitor = monitor
         self.camera = camera
         self.extractor = extractor
+        self.hands = hands
+        self._hand_calls = 0
+        self._last_hands: list = []
         self.config = config or monitor.config
         self.governor = governor or FrameGovernor(camera_fps=camera.fps)
         self._clock, self._perf = clock, perf_clock
@@ -46,6 +50,9 @@ class Pipeline:
         self._stats: Optional[FrameStats] = None
         self._last_proc: Optional[float] = None
         self.proc_fps: Optional[float] = None
+        c = self.config
+        self._night = NightEnhancer(c.night_clahe_clip, c.night_blend)
+        self.night_active = False
 
     def step(self) -> Step:
         ok, frame = self.camera.read()
@@ -63,11 +70,21 @@ class Pipeline:
         if self._state is None or self.governor.should_process():
             started = self._perf()
             bright = scene_brightness(frame)
-            seen = brighten(frame, bright) if bright < self.config.low_light_enhance_below else frame
+            mode = self.config.night_mode
+            self.night_active = mode == "on" or (mode == "auto" and bright < self.config.night_brightness_below)
+            if self.night_active:
+                seen = self._night.apply(frame, bright)
+            else:
+                self._night.reset()
+                seen = brighten(frame, bright) if bright < self.config.low_light_enhance_below else frame
             landmarks = self.extractor.extract(seen)
+            if self.hands is not None and self.config.detect_phone:
+                if self._hand_calls % max(1, self.config.hand_every_n) == 0:
+                    self._last_hands = self.hands.extract(seen)
+                self._hand_calls += 1
             self._stats = measure(frame, landmarks)        # honest brightness from the raw frame
             self._state = self.monitor.update(landmarks, now, (w, h), stats=self._stats,
-                                              fps=self.proc_fps)
+                                              fps=self.proc_fps, hands=self._last_hands)
             self.governor.record(self._perf() - started)
             if self._last_proc is not None:
                 inst = 1.0 / max(now - self._last_proc, 1e-6)

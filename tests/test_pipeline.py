@@ -1,6 +1,6 @@
 import numpy as np
 
-from drowsiness import Camera, Level, Monitor, Calibration
+from drowsiness import Calibration, Camera, Level, Monitor
 from drowsiness.pipeline import Pipeline
 from helpers import make_face
 
@@ -86,3 +86,52 @@ def test_pipeline_skips_frames_when_processing_is_slow():
     pipe = Pipeline(Monitor(calibration=CAL), cam, ext, clock=clock, perf_clock=perf)
     steps = [pipe.step() for _ in range(60)]
     assert ext.calls < 60 and any(not s.new for s in steps)
+
+
+class DarkCap(Cap):
+    def read(self):
+        if not self.switch["ok"]:
+            return False, None
+        return True, np.clip(self.rng.normal(20, 5, (480, 640, 3)), 0, 255).astype(np.uint8)
+
+
+class SeeingExtractor(Extractor):
+    """Remembers how bright the picture was when the detector looked at it."""
+
+    def __init__(self, face):
+        super().__init__(face)
+        self.seen = []
+
+    def extract(self, frame):
+        self.seen.append(float(frame.mean()))
+        return super().extract(frame)
+
+
+def dark_pipe(mode):
+    from drowsiness import Config
+    switch, clock = {"ok": True}, Clock()
+    cam = Camera(capture_factory=lambda i: DarkCap(switch), clock=clock)
+    cam.open()
+    ext = SeeingExtractor(dict(ear=0.26))
+    cfg = Config(night_mode=mode)
+    pipe = Pipeline(Monitor(cfg, calibration=CAL), cam, ext, cfg, clock=clock, perf_clock=clock)
+    for _ in range(20):
+        pipe.step()
+    return pipe, ext
+
+
+def test_auto_night_mode_switches_on_in_the_dark():
+    pipe, ext = dark_pipe("auto")
+    assert pipe.night_active and min(ext.seen) > 60      # the detector saw a lifted picture
+
+
+def test_night_mode_off_leaves_the_picture_to_the_basic_brightening():
+    pipe, _ = dark_pipe("off")
+    assert not pipe.night_active
+
+
+def test_auto_night_mode_stays_off_in_normal_light():
+    pipe, _, = build(dict(ear=0.26))[0], None
+    for _ in range(10):
+        pipe.step()
+    assert not pipe.night_active

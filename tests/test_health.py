@@ -1,4 +1,3 @@
-import pytest
 
 from drowsiness import FrameStats, HealthMonitor, Issue, Level
 

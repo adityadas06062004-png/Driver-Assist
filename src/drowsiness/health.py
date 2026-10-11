@@ -35,7 +35,7 @@ HINTS: Tuple[Tuple[Issue, str], ...] = (
     (Issue.BLURRY, "Image blurry: clean the lens or add light"),
     (Issue.FACE_TOO_SMALL, "Face too far: move closer to the camera"),
     (Issue.LOOKING_AWAY, "Looking away: eyes not measured"),
-    (Issue.LOW_LIGHT, "Low light: accuracy reduced, auto-brightening on"),
+    (Issue.LOW_LIGHT, "Low light: accuracy reduced, picture is being enhanced"),
     (Issue.LOW_FPS, "Low frame rate: detection may be slower"),
 )
 
@@ -71,11 +71,11 @@ class HealthMonitor:
 
     def update(self, t: float, *, face_present: bool, camera_ok: bool = True,
                yaw: float = float("nan"), stats: Optional[FrameStats] = None,
-               fps: Optional[float] = None) -> Health:
+               fps: Optional[float] = None, face_hidden_by_hand: bool = False) -> Health:
         c = self.config
         raw = {i: False for i in Issue}
         raw[Issue.CAMERA_LOST] = not camera_ok
-        raw[Issue.NO_FACE] = camera_ok and not face_present
+        raw[Issue.NO_FACE] = camera_ok and not face_present and not face_hidden_by_hand
         if stats is not None:
             raw[Issue.LOW_LIGHT] = stats.brightness < c.low_light_brightness
             if face_present and not math.isnan(stats.sharpness):

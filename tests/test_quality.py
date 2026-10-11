@@ -72,3 +72,28 @@ def test_stats_unreliable_rules():
     assert Q.stats_unreliable(FrameStats(120, 300, 0.0, 0.05), cfg)     # too far
     assert not Q.stats_unreliable(FrameStats(20, 300, 0.0, 0.3), cfg)   # dark alone does not gate
     assert not Q.stats_unreliable(FrameStats(50, float("nan"), float("nan"), float("nan")), cfg)
+
+
+def dim_frame(mean=22, std=6, seed=5):
+    return noise_frame(mean=mean, std=std, seed=seed)
+
+
+def test_night_enhancer_lifts_and_adds_contrast():
+    frame = dim_frame()
+    b = Q.scene_brightness(frame)
+    out = Q.NightEnhancer().apply(frame, b)
+    assert Q.scene_brightness(out) > b + 40
+    assert out.std() > frame.std() * 2
+    assert out.shape == frame.shape and out.dtype == np.uint8
+
+
+def test_night_enhancer_blends_previous_frame_and_resets():
+    enh = Q.NightEnhancer(blend=0.5)
+    a, b = dim_frame(seed=1), dim_frame(seed=2)
+    first = enh.apply(a, 22).copy()
+    second = enh.apply(b, 22)
+    alone = Q.NightEnhancer(blend=0.0).apply(b, 22)
+    assert not np.array_equal(second, alone)            # the previous frame was mixed in
+    enh.reset()
+    assert np.array_equal(enh.apply(b, 22), alone)      # after a reset there is nothing to mix
+    assert first.shape == second.shape

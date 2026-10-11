@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import cv2
+import numpy as np
 
+from .activity import Activity
 from .alerts import Level
 from .monitor import MonitorState
+from .text import draw_text, text_size
 
 _COLORS = {  # BGR
     Level.OK: (0, 200, 0),
@@ -16,14 +19,13 @@ _COLORS = {  # BGR
 _FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 
-def _text(img, s, org, scale=0.65, color=(255, 255, 255), thick=2):
-    cv2.putText(img, s, org, _FONT, scale, (0, 0, 0), thick + 3, cv2.LINE_AA)
-    cv2.putText(img, s, org, _FONT, scale, color, thick, cv2.LINE_AA)
+def _text(img, s, org, scale=0.65, color=None, thick=2):
+    """Draw readable text. ``color`` None picks light or dark to suit the background."""
+    draw_text(img, s, org, size=round(scale * 30), color=color, weight=700 if thick >= 3 else 600)
 
 
-def _centered(img, s, y, scale, color):
-    (tw, _), _ = cv2.getTextSize(s, _FONT, scale, 3)
-    _text(img, s, ((img.shape[1] - tw) // 2, y), scale, color, 3)
+def _centered(img, s, y, scale, color=None):
+    draw_text(img, s, (img.shape[1] // 2, y), size=round(scale * 30), color=color, weight=700, anchor="m")
 
 
 def draw_hud(view, state: MonitorState, t: float, fps: float = 0.0) -> None:
@@ -33,7 +35,7 @@ def draw_hud(view, state: MonitorState, t: float, fps: float = 0.0) -> None:
 
     if state.phase == "calibrating":
         _centered(view, "CALIBRATING", 50, 1.2, (0, 215, 255))
-        _centered(view, state.message, 90, 0.6, (255, 255, 255))
+        _centered(view, state.message, 90, 0.6)
         cv2.rectangle(view, (40, h - 50), (w - 40, h - 30), (80, 80, 80), -1)
         cv2.rectangle(view, (40, h - 50), (40 + int((w - 80) * state.progress), h - 30),
                       (0, 215, 255), -1)
@@ -54,9 +56,19 @@ def draw_hud(view, state: MonitorState, t: float, fps: float = 0.0) -> None:
     else:
         lines = ["No face detected"]
     for i, s in enumerate(lines):
-        _text(view, s, (10, 26 + 24 * i), 0.55)
+        _text(view, s, (14, 30 + 26 * i), 0.6)
     if fps:
-        _text(view, f"{fps:.0f} FPS", (w - 90, 26), 0.55)
+        _text(view, f"{fps:.0f} FPS", (w - 96, 30), 0.6)
+
+    act = state.activity
+    if act is not None:
+        amber = (0, 170, 255) if act.activity == Activity.PHONE_CALL else None
+        label_w, _ = text_size(act.label, round(0.6 * 30), 700)
+        _text(view, act.label, (w - label_w - 16, 58), 0.6, amber, thick=3)
+        for x, y, at_ear in act.hand_points:        # the view is mirrored, so flip x
+            cv2.circle(view, (int(w - x), int(y)), 8, (0, 170, 255) if at_ear else (210, 210, 210), 2, cv2.LINE_AA)
+        if act.activity == Activity.PHONE_CALL and level < Level.WARNING:
+            _centered(view, "Phone in use", h - 110, 0.7, (0, 170, 255))
 
     # Risk bar along the bottom.
     cv2.rectangle(view, (20, h - 44), (w - 20, h - 24), (60, 60, 60), -1)
@@ -72,3 +84,12 @@ def draw_hud(view, state: MonitorState, t: float, fps: float = 0.0) -> None:
         _centered(view, "WAKE UP!", h // 2, 2.0, color)
     elif level in (Level.WARNING, Level.CAUTION):
         _centered(view, state.alert.message, h // 2, 0.9, color)
+
+
+def screen_light(view: np.ndarray, border: int = 90) -> np.ndarray:
+    """Put the picture on a bright white canvas. In a dark room the screen then lights your face,
+    like a ring light, which gives the camera more to work with. Draw the HUD first."""
+    h, w = view.shape[:2]
+    canvas = np.full((h + 2 * border, w + 2 * border, 3), 255, np.uint8)
+    canvas[border:border + h, border:border + w] = view
+    return canvas

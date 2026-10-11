@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 
 from drowsiness import Calibration, Level, Monitor
 from drowsiness.overlay import draw_hud
@@ -90,3 +89,11 @@ def test_overlay_draws_in_every_phase():
     t, out = run_face(feed_for(mon), t, 3, ear=0.05)
     draw_hud(img, out[-1], t)                               # critical
     assert img.any()
+
+
+def test_screen_light_adds_a_white_border():
+    from drowsiness.overlay import screen_light
+    view = np.zeros((120, 160, 3), np.uint8)
+    out = screen_light(view, border=20)
+    assert out.shape == (160, 200, 3)
+    assert out[0, 0].tolist() == [255, 255, 255] and out[20, 20].tolist() == [0, 0, 0]

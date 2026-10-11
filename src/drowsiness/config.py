@@ -72,6 +72,10 @@ class Config:
     camera_lost_critical_s: float = 2.0
     low_light_brightness: float = 50.0     # mean gray (0..255) below this = too dark
     low_light_enhance_below: float = 70.0  # auto-brighten the frame below this scene brightness
+    night_mode: str = "auto"               # "auto", "on" or "off" (see NightEnhancer)
+    night_brightness_below: float = 45.0   # auto night mode switches on below this scene brightness
+    night_clahe_clip: float = 3.0          # local contrast boost; higher = stronger, but noisier
+    night_blend: float = 0.3               # share of the previous frame mixed in to calm sensor noise
     glare_fraction: float = 0.12           # saturated share of the eye region = glare
     blur_sharpness_min: float = 15.0       # Laplacian variance of the face crop; below = blurry
     face_min_width_ratio: float = 0.12     # face narrower than this share of the frame = too far
@@ -80,3 +84,18 @@ class Config:
     issue_persist_s: float = 1.0           # an issue must last this long before it is reported
     issue_clear_s: float = 1.0             # ...and be gone this long before it clears
     min_fps: float = 12.0                  # below this, report LOW_FPS
+
+    # --- Phone and talking detection (Phase 6) ---
+    detect_phone: bool = True
+    hand_every_n: int = 2                  # run the hand detector on every Nth processed frame
+    phone_ear_radius: float = 0.60         # hand centre within this many face widths of an ear = "at the ear"
+    phone_lateral_min: float = 0.40        # ...and at least this far to the side of the face centre
+    phone_pose_s: float = 2.0              # hand at the ear this long = phone call (a quick scratch is ignored)
+    phone_clear_s: float = 1.0             # hand away this long = call over
+    phone_alert_s: float = 5.0             # warn after this long on the phone (0 turns the warning off)
+    talk_window_s: float = 3.0             # mouth movement is judged over this window
+    talk_step: float = 0.03                # a MAR swing smaller than this is noise
+    talk_min_reversals: int = 4            # this many open/close swings in the window = talking
+    phone_face_memory_s: float = 8.0       # keep using the last seen face outline this long when a hand hides the face
+    hand_hides_face_max_s: float = 8.0     # a hand over the face excuses "face not visible" for this long at most
+

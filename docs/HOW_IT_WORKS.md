@@ -66,6 +66,59 @@ Bad data is worse than no data, so the system checks that it can see the driver 
 - **Health alerts and drowsiness alerts share one state machine**: health raises the score floor to the WARNING or
   CRITICAL entry level, so hysteresis, sound repeat and on-screen display work the same way.
 
+## Night mode and on-screen text
+
+`NightEnhancer` in `quality.py` runs before face detection when the scene brightness is below 45 (or when forced with
+`--night on`). It applies a gamma lift, CLAHE on the lightness channel, and a 30 percent blend with the previous frame.
+The blend is small on purpose, because heavy averaging smears blinks. Image quality checks still use the raw frame, so the
+low light hint reports the real brightness.
+
+On-screen text is drawn by `text.py` with the bundled Inter font through Pillow. For each piece of text it measures the
+luminance of the pixels underneath and picks light ink over dark areas and dark ink over light areas, using the WCAG
+contrast ratio. Coloured labels (alert levels) keep their hue but are lightened or darkened until the contrast is at least
+4.5. A soft halo in the opposite tone keeps text readable over busy backgrounds. Glyph masks are cached, which keeps all the
+text on a frame to about 6 ms. If Pillow or the font is missing it falls back to OpenCV text.
+
+## Phone and talking detection
+
+MediaPipe Hands finds up to two hands every second frame (the result is reused in between). `activity.py` takes the
+palm centre of each hand and checks three things against the face: it is within 0.6 face widths of an ear contour
+point (Face Mesh 234 or 454), it is at least 0.4 face widths to the side of the face centre, and it is at head height
+(between the forehead and a little below the chin). All three at once is the phone pose. The pose must be held for 2 s
+to count as a call and absent for 1 s to end one, so a quick scratch or a one-frame detection miss does nothing.
+
+The head outline (ear points, forehead, chin) is remembered for 8 s. A phone held to the ear often hides the face from
+Face Mesh, and without the outline the ear position would vanish exactly when it is needed. If the face is missing and a
+hand sits inside the remembered face box, the "face not visible" issue is held back for up to 8 s, because a hand over
+the face is not a driver who has left the seat.
+
+Talking is counted from the mouth aspect ratio over a 3 s window: at least four open/close swings of 0.03 or more.
+A yawn is one long opening, so it never reaches four swings. A phone call outranks plain talking. After 5 s on a call the
+risk score is raised to the WARNING level, using the same floor mechanism as the picture and camera health alerts.
+
+## Learned risk model
+
+`mlmodel.py` holds a logistic regression written in numpy. Its eight inputs are eye openness relative to the driver's own
+calibrated baseline, mouth opening, absolute head pitch, PERCLOS, current closure time, blink rate, and yawn and nod counts.
+Inputs are standardised, classes are weighted to balance, and a small L2 penalty keeps the weights modest. The output
+probability is scaled to 0 to 100 and smoothed with the same fast rise and slow fall as the rule score.
+
+Evaluation is leave-one-session-out: each recording session is held out in turn and predicted by a model trained on the
+others. A random split of rows would leak neighbouring frames into the test set and overstate accuracy. The rules are scored
+on the same rows (WARNING or higher counts as drowsy) as the baseline to beat. In `blend` mode the final score is the
+average of rules and model, and in every mode the closure alarm (eyes closed for 0.4 to 1.5 s and more) is kept as a floor,
+so a wrong model prediction cannot silence the most important alert.
+
+## Logging and dashboard
+
+`recorder.py` watches the monitor's state and writes to SQLite (`storage.py`). Three tables: sessions, events and samples.
+An event is written when the alert level changes, when a yawn or nod is counted, when a picture or camera issue appears,
+and once when calibration finishes. A sample (risk, level, EAR, MAR, PERCLOS, blink rate) is written about once a second,
+which is enough to draw the risk timeline without growing the file quickly. Values are rounded and NaN is stored as NULL.
+
+The detection code never imports the database, and the database module only uses the standard library. The Streamlit
+dashboard in `app/dashboard.py` reads the same file, so the CLI and the dashboard can be used interchangeably.
+
 ## Self-test (`python -m drowsiness.qa`)
 
 Guided scenarios: baseline, talking, mirror glances, yawning, eyes closed, head drop. "Quiet" scenarios must not raise a

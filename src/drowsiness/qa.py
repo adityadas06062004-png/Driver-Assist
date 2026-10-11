@@ -14,18 +14,20 @@ import argparse
 import math
 import statistics
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass, field
-from typing import Iterable, List, Optional, Tuple
+from typing import Iterable, List, Tuple
 
 import cv2
 
 from .alerts import Level
 from .camera import Camera
 from .config import Config
-from .landmarks import FaceLandmarkExtractor
+from .landmarks import FaceLandmarkExtractor, HandLandmarkExtractor
 from .monitor import Monitor
 from .overlay import _centered, draw_hud
 from .pipeline import Pipeline
+from .risk import dominant_cause
 
 NAN = float("nan")
 COUNTDOWN_S = 4.0
@@ -38,6 +40,8 @@ SCENARIOS: List[Tuple[str, str, int, str]] = [
     ("Yawn", "Yawn widely, twice.", 10, "yawn"),
     ("Eyes closed", "Close your eyes and keep them closed.", 6, "alarm"),
     ("Head drop", "Let your head drop forward and hold it down.", 6, "alarm"),
+    ("Touch your face", "Scratch your ear or cheek for a second, then put your hand down. Repeat.", 8, "no_phone"),
+    ("Phone call", "Hold your hand (or a phone) to your ear and talk, like a call.", 8, "phone"),
 ]
 
 
@@ -53,6 +57,8 @@ class Sample:
     level: int
     yawns: int
     issues: frozenset = field(default_factory=frozenset)
+    activity: str = "driving"
+    cause: str = ""
 
 
 @dataclass
@@ -93,11 +99,19 @@ def summarize(name: str, expect: str, samples: List[Sample]) -> ScenarioResult:
 
     if expect == "quiet":
         passed = max_level < Level.WARNING
-        detail = "no alarm" if passed else f"FALSE ALARM at {first_warn:.1f}s"
+        cause = next((s.cause for s in samples if s.level >= Level.WARNING and s.cause), "")
+        detail = "no alarm" if passed else f"FALSE ALARM at {first_warn:.1f}s" + (f" ({cause})" if cause else "")
     elif expect == "alarm":
         passed = first_warn is not None
         detail = (f"alarm after {first_warn:.1f}s (includes your reaction time)"
                   if passed else "NO ALARM")
+    elif expect == "phone":
+        first = next((s.t - t0 for s in samples if s.activity == "phone_call"), None)
+        passed = first is not None
+        detail = f"phone pose recognised after {first:.1f}s" if passed else "NOT RECOGNISED"
+    elif expect == "no_phone":
+        passed = not any(s.activity == "phone_call" for s in samples)
+        detail = "no phone call flagged" if passed else "FALSE PHONE CALL"
     else:  # "yawn"
         passed = yawns >= 1
         detail = f"{yawns} yawn(s) counted"
@@ -118,7 +132,8 @@ def to_markdown(results: List[ScenarioResult], tag: str, when: str) -> str:
         return "-" if x is None or (isinstance(x, float) and math.isnan(x)) else format(x, spec)
 
     lines = [f"## QA run {when}" + (f" ({tag})" if tag else ""), "",
-             "| Scenario | Expect | Result | Detail | Face found | Trusted | EAR med/min | Bright | Sharp | Max level | Issues |",
+             "| Scenario | Expect | Result | Detail | Face found | Trusted | EAR med/min | Bright | Sharp "
+             "| Max level | Issues |",
              "|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in results:
         lines.append(
@@ -131,7 +146,7 @@ def to_markdown(results: List[ScenarioResult], tag: str, when: str) -> str:
     return "\n".join(lines)
 
 
-def _sample(step) -> Sample:
+def _sample(step, step_cfg) -> Sample:
     res, stats = step.state.result, step.stats
     return Sample(
         t=res.t, face_found=res.face_found, trusted=res.trusted, ear=res.ear,
@@ -140,7 +155,9 @@ def _sample(step) -> Sample:
         glare=stats.glare if stats else NAN,
         level=int(step.state.alert.level) if step.state.alert else 0,
         yawns=res.yawn_count,
-        issues=frozenset(i.value for i in step.state.health.issues) if step.state.health else frozenset())
+        issues=frozenset(i.value for i in step.state.health.issues) if step.state.health else frozenset(),
+        activity=step.state.activity.activity.value if step.state.activity else "driving",
+        cause=dominant_cause(step.state.risk.components, step_cfg, res.nodding) if step.state.risk else "")
 
 
 def main() -> None:
@@ -148,10 +165,12 @@ def main() -> None:
     parser.add_argument("--camera", type=int, default=0)
     parser.add_argument("--tag", default="", help='conditions, e.g. "glasses, daylight"')
     parser.add_argument("--out", default="qa_results.md")
+    parser.add_argument("--night", choices=("auto", "on", "off"), default="auto",
+                        help="software night mode (use --night on for the dim-room runs)")
     parser.add_argument("--calibration-seconds", type=float, default=20.0)
     args = parser.parse_args()
 
-    cfg = Config(calibration_s=args.calibration_seconds)
+    cfg = Config(calibration_s=args.calibration_seconds, night_mode=args.night)
     camera = Camera(args.camera)
     if not camera.open():
         raise SystemExit("Could not open the camera. Check macOS camera permission.")
@@ -162,8 +181,9 @@ def main() -> None:
     samples: List[Sample] = []
     quit_early = False
 
-    with FaceLandmarkExtractor() as extractor:
-        pipe = Pipeline(monitor, camera, extractor, cfg)
+    hands_ctx = HandLandmarkExtractor() if cfg.detect_phone else nullcontext()
+    with FaceLandmarkExtractor() as extractor, hands_ctx as hands:
+        pipe = Pipeline(monitor, camera, extractor, cfg, hands=hands)
         while idx < len(SCENARIOS):
             step = pipe.step()
             now = step.state.result.t
@@ -177,7 +197,7 @@ def main() -> None:
                 name, instruction, seconds, expect = SCENARIOS[idx]
                 draw_hud(view, step.state, now, pipe.proc_fps or 0.0)
                 h = view.shape[0]
-                _centered(view, f"{idx + 1}/{len(SCENARIOS)}  {name}", 40, 0.9, (255, 255, 255))
+                _centered(view, f"{idx + 1}/{len(SCENARIOS)}  {name}", 40, 0.9)
                 _centered(view, instruction, 75, 0.65, (0, 215, 255))
                 if stage == "countdown":
                     left = COUNTDOWN_S - (now - stage_start)
@@ -192,7 +212,7 @@ def main() -> None:
                     left = seconds - (now - stage_start)
                     _centered(view, f"GO  {max(left, 0):.0f}s", h // 2, 1.6, (0, 255, 0))
                     if step.new:
-                        samples.append(_sample(step))
+                        samples.append(_sample(step, cfg))
                     if left <= 0:
                         results.append(summarize(name, expect, samples))
                         idx += 1

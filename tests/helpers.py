@@ -71,3 +71,21 @@ def run_face(feed, t, seconds, fps=FPS, **face):
         out.append(feed(pts, t))
         t += 1.0 / fps
     return t, out
+
+
+def add_head_landmarks(pts):
+    """Give a synthetic face the contour points the phone detector uses (ears, forehead).
+    The chin (152) already exists because the head pose uses it, so it is left alone."""
+    cx, ny = pts[1, 0], pts[1, 1]
+    pts[234, :2], pts[454, :2], pts[10, :2] = (cx - 120.0, ny + 10.0), (cx + 120.0, ny + 10.0), (cx, ny - 200.0)
+    return pts
+
+
+def make_hand(cx, cy, size=40.0):
+    """21 hand landmarks bunched around a palm centre."""
+    hand = np.zeros((21, 3))
+    rng = np.random.default_rng(1)
+    hand[:, :2] = np.array([cx, cy]) + rng.uniform(-size / 2, size / 2, (21, 2))
+    for i in (0, 5, 9, 13, 17):                      # palm points sit exactly on the centre
+        hand[i, :2] = (cx, cy)
+    return hand
