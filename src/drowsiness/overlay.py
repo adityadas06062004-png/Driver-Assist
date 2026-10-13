@@ -28,8 +28,8 @@ def _centered(img, s, y, scale, color=None):
     draw_text(img, s, (img.shape[1] // 2, y), size=round(scale * 30), color=color, weight=700, anchor="m")
 
 
-def draw_hud(view, state: MonitorState, t: float, fps: float = 0.0) -> None:
-    """Draw on ``view`` (already mirrored for display) in place."""
+def draw_hud(view, state: MonitorState, t: float, fps: float = 0.0, mirror: bool = True) -> None:
+    """Draw on ``view`` in place. ``mirror`` is True for the live selfie view, False for video files."""
     h, w = view.shape[:2]
     res = state.result
 
@@ -65,8 +65,9 @@ def draw_hud(view, state: MonitorState, t: float, fps: float = 0.0) -> None:
         amber = (0, 170, 255) if act.activity == Activity.PHONE_CALL else None
         label_w, _ = text_size(act.label, round(0.6 * 30), 700)
         _text(view, act.label, (w - label_w - 16, 58), 0.6, amber, thick=3)
-        for x, y, at_ear in act.hand_points:        # the view is mirrored, so flip x
-            cv2.circle(view, (int(w - x), int(y)), 8, (0, 170, 255) if at_ear else (210, 210, 210), 2, cv2.LINE_AA)
+        for x, y, at_ear in act.hand_points:        # a mirrored view needs x flipped
+            ring = (0, 170, 255) if at_ear else (210, 210, 210)
+            cv2.circle(view, (int(w - x if mirror else x), int(y)), 8, ring, 2, cv2.LINE_AA)
         if act.activity == Activity.PHONE_CALL and level < Level.WARNING:
             _centered(view, "Phone in use", h - 110, 0.7, (0, 170, 255))
 

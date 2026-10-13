@@ -10,7 +10,7 @@ Constraint: zero budget, free tools and free hosting only. Dev machine: MacBook 
 | 3 | Robustness: no face, camera loss, low light, FPS, glasses/angle tests | Done in code (100 tests pass); live Mac check and QA runs pending |
 | 4 | Streamlit dashboard, SQLite logging, CSV export | Done, verified live on the Mac |
 | 5 | Packaging: CLI entry point, Docker, README demo, GitHub Actions CI | Done in code (110 tests pass); Docker build, CI run and demo GIF pending |
-| 6 | Stretch: ML classifier, Raspberry Pi, night/IR mode, phone alerts, free hosted demo | In progress: night mode and adaptive text verified on the Mac, learned risk model tried on real recordings (it did not beat the rules), phone and talking detection fixed after the first QA run (169 tests pass); second QA run pending |
+| 6 | Stretch: ML classifier, Raspberry Pi, night/IR mode, phone alerts, free hosted demo | In progress: night mode and adaptive text verified on the Mac, learned risk model tried on real recordings (it did not beat the rules), phone and talking detection fixed after the first QA run (178 tests pass); second QA run pending |
 
 ## Phase 1 notes
 - Pinned `mediapipe==0.10.21` (bundles the face model, no download needed).
@@ -60,8 +60,11 @@ First real QA run of step 3 (8 scenarios): 6 passed. The phone pose was not reco
 (found only 55 percent of the time), and touching the face raised a face-not-visible CRITICAL. Fixed by remembering the
 head outline for 8 s and excusing a hand-covered face for the same time. The QA table now names the cause of a false
 alarm, after one talking scenario raised a WARNING at 2.7 s in one run and none in another.
-Left in Phase 6, one at a time: Raspberry Pi, free hosted demo.
+Step 4, video files and the hosted demo: `driver-assist video` analyses a clip, the dashboard has a Video page, and the files
+Streamlit Community Cloud needs are in the repository. Tested with synthetic clips; the deployment itself has not been tried.
+Left in Phase 6: Raspberry Pi.
 
 ## Next
-Run `driver-assist qa` again and send the table: the Phone call, Touch your face and Talking rows matter most.
-Then the next Phase 6 item.
+Run `driver-assist qa` again and send the table (Phone call, Touch your face, Talking).
+Try `driver-assist video` on a short clip of yourself, then deploy the dashboard on Streamlit Community Cloud and check the CI run on GitHub.
+Then the last Phase 6 item, Raspberry Pi.

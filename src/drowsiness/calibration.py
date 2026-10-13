@@ -118,7 +118,9 @@ class Calibrator:
             if self._untrusted > self._frames_with_face:
                 return fail("Picture quality too poor: fix glare, blur or distance (see hint)")
             return fail("Face not visible enough: face the camera in good light")
-        if len(self._ears) < c.calibration_min_samples:
+        # Short calibrations (a video clip, say) cannot collect as many frames, so ask for about 4 per second.
+        needed = min(c.calibration_min_samples, int(4 * (c.calibration_s - c.calibration_warmup_s)))
+        if len(self._ears) < needed:
             return fail("Not enough frames collected")
 
         ear = statistics.median(self._ears)

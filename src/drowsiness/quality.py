@@ -68,6 +68,20 @@ class NightEnhancer:
         return out
 
 
+def prepare_for_detection(frame_bgr: np.ndarray, config: Config, night: "NightEnhancer"):
+    """The picture the face detector should look at, and whether night mode was used.
+    Dim scenes are lifted (and in night mode contrast-boosted); normal scenes are left alone."""
+    bright = scene_brightness(frame_bgr)
+    mode = config.night_mode
+    use_night = mode == "on" or (mode == "auto" and bright < config.night_brightness_below)
+    if use_night:
+        return night.apply(frame_bgr, bright), True
+    night.reset()
+    if bright < config.low_light_enhance_below:
+        return brighten(frame_bgr, bright), False
+    return frame_bgr, False
+
+
 def _box(points: np.ndarray, w: int, h: int, pad: float = 0.0):
     x0, y0 = points.min(axis=0)
     x1, y1 = points.max(axis=0)

@@ -17,7 +17,7 @@ from .camera import Camera
 from .config import Config
 from .monitor import Monitor, MonitorState
 from .perf import FrameGovernor
-from .quality import FrameStats, NightEnhancer, brighten, measure, scene_brightness
+from .quality import FrameStats, NightEnhancer, measure, prepare_for_detection
 
 
 @dataclass
@@ -69,14 +69,7 @@ class Pipeline:
         new = False
         if self._state is None or self.governor.should_process():
             started = self._perf()
-            bright = scene_brightness(frame)
-            mode = self.config.night_mode
-            self.night_active = mode == "on" or (mode == "auto" and bright < self.config.night_brightness_below)
-            if self.night_active:
-                seen = self._night.apply(frame, bright)
-            else:
-                self._night.reset()
-                seen = brighten(frame, bright) if bright < self.config.low_light_enhance_below else frame
+            seen, self.night_active = prepare_for_detection(frame, self.config, self._night)
             landmarks = self.extractor.extract(seen)
             if self.hands is not None and self.config.detect_phone:
                 if self._hand_calls % max(1, self.config.hand_every_n) == 0:

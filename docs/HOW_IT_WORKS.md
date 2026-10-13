@@ -79,6 +79,14 @@ contrast ratio. Coloured labels (alert levels) keep their hue but are lightened 
 4.5. A soft halo in the opposite tone keeps text readable over busy backgrounds. Glyph masks are cached, which keeps all the
 text on a frame to about 6 ms. If Pillow or the font is missing it falls back to OpenCV text.
 
+## Video files
+
+`video.py` reads a file with OpenCV and gives every frame the timestamp `index / fps`, so all the time-based logic (PERCLOS,
+yawn and phone timers, hysteresis) behaves as it would live, whatever speed the file is processed at. Frames wider than 960
+pixels are scaled down, which keeps detection fast and the on-screen text a sensible size. `--stride N` analyses every Nth frame.
+Calibration asks for about four frames per second of calibration time, because a short clip analysed with a stride cannot
+collect as many frames as a 20 second live calibration. The peak-risk frame is kept with the on-screen display drawn on it.
+
 ## Phone and talking detection
 
 MediaPipe Hands finds up to two hands every second frame (the result is reused in between). `activity.py` takes the

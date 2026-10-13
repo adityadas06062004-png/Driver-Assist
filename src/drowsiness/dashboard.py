@@ -2,15 +2,18 @@
 
     driver-assist dashboard          (or: streamlit run app/dashboard.py)
 
-Two pages: "Sessions" shows saved runs (summary, risk timeline, event log, CSV download),
-"Live" runs the monitor from this page with the webcam and logs it like the CLI does.
+Three pages: "Sessions" shows saved runs (summary, risk timeline, event log, CSV download),
+"Video" analyses an uploaded clip, "Live" runs the monitor with the webcam and logs it like the CLI does.
 """
 
 from __future__ import annotations
 
+import os
+import tempfile
 import time
 from pathlib import Path
 
+import cv2
 import pandas as pd
 import streamlit as st
 
@@ -23,6 +26,7 @@ from drowsiness.overlay import draw_hud
 from drowsiness.pipeline import Pipeline
 from drowsiness.recorder import SessionRecorder
 from drowsiness.storage import DEFAULT_DB, LEVEL_NAMES, Storage
+from drowsiness.video import analyze_video, describe
 
 st.set_page_config(page_title="Driver Assist", layout="wide")
 
@@ -46,6 +50,10 @@ def sessions_page(db: Storage) -> None:
 
     labels = {s["id"]: f"#{s['id']}  {fmt_time(s['started_at'])}" for s in sessions}
     sid = st.sidebar.selectbox("Session", list(labels), format_func=labels.get)
+    render_session(db, sid, allow_delete=True)
+
+
+def render_session(db: Storage, sid: int, allow_delete: bool = False) -> None:
     summary = db.summary(sid)
 
     c = st.columns(5)
@@ -99,12 +107,51 @@ def sessions_page(db: Storage) -> None:
                          file_name=f"session_{sid}_events.csv", disabled=events.empty)
     d[1].download_button("Timeline (CSV)", samples.to_csv(index=False) if not samples.empty else "",
                          file_name=f"session_{sid}_timeline.csv", disabled=samples.empty)
-    if d[2].button("Delete this session"):
+    if allow_delete and d[2].button("Delete this session"):
         db.delete_session(sid)
         st.rerun()
 
 
+def video_page(db: Storage) -> None:
+    st.write("Upload a short clip of someone driving (face visible). The first seconds are used to calibrate, so the "
+             "driver should look at the road with eyes open at the start.")
+    st.caption("The clip is processed by the machine running this app and deleted afterwards. If this is a hosted "
+               "copy, do not upload anything private.")
+    up = st.file_uploader("Driving clip", type=["mp4", "mov", "avi", "mkv"])
+    c = st.columns(3)
+    calib = c[0].slider("Calibration seconds", 5, 30, 10)
+    stride = c[1].select_slider("Analyse every Nth frame (higher is faster)", options=[1, 2, 3], value=2)
+    phone = c[2].checkbox("Check for phone use (slower)", value=False)
+    save = st.checkbox("Save the result to my sessions", value=False)
+    if up is None or not st.button("Analyse", type="primary"):
+        return
+
+    with tempfile.NamedTemporaryFile(suffix=Path(up.name).suffix, delete=False) as fh:
+        fh.write(up.getbuffer())
+        tmp = fh.name
+    bar = st.progress(0.0, text="Analysing")
+    try:
+        result = analyze_video(tmp, Config(calibration_s=float(calib), detect_phone=phone),
+                               storage=db if save else None, stride=int(stride), max_seconds=300,
+                               progress=lambda f: bar.progress(f, text="Analysing"))
+    except ValueError as exc:
+        st.error(str(exc))
+        return
+    finally:
+        os.unlink(tmp)
+    bar.empty()
+
+    if not result.calibrated:
+        st.warning(describe(result))
+        return
+    st.success(f"Analysed {result.duration_s:.0f} seconds of video.")
+    if result.peak_frame is not None:
+        st.image(cv2.cvtColor(result.peak_frame, cv2.COLOR_BGR2RGB), caption="The moment with the highest risk")
+    render_session(result.storage, result.session_id)
+
+
 def live_page(db: Storage) -> None:
+    st.caption("This page needs a camera on the computer that is running the app. On a hosted copy, use Video.")
     st.write("Looks at the driver through the webcam. It calibrates for the first 20 seconds, "
              "so look at the road with your eyes open and mouth closed. Press Stop (or any widget) to end.")
     c = st.columns(3)
@@ -127,7 +174,6 @@ def live_page(db: Storage) -> None:
     player = SoundPlayer(enabled=sound)
     recorder = SessionRecorder(db, camera=int(camera_index))
     deadline = time.monotonic() + minutes * 60
-    import cv2
 
     try:
         with FaceLandmarkExtractor() as extractor:
@@ -158,9 +204,11 @@ def main() -> None:
                "angle all affect accuracy.")
     db_path = st.sidebar.text_input("Database file", str(DEFAULT_DB))
     db = Storage(Path(db_path).expanduser())
-    page = st.sidebar.radio("Page", ["Sessions", "Live"])
+    page = st.sidebar.radio("Page", ["Sessions", "Video", "Live"])
     if page == "Sessions":
         sessions_page(db)
+    elif page == "Video":
+        video_page(db)
     else:
         live_page(db)
 

@@ -15,6 +15,7 @@ commands:
   export      write logged events, timeline or sessions to CSV
   qa          guided self-test that records how the detector behaves
   preview     raw metrics overlay, no alerts
+  video       analyse a recorded video file (no camera needed)
   collect     record labelled examples (alert or acted drowsy) for the learned model
   train       train the learned model from those recordings and compare it with the rules
 
@@ -47,6 +48,7 @@ COMMANDS: Dict[str, Callable[[], None]] = {
     "export": _run_module("export"),
     "qa": _run_module("qa"),
     "preview": _run_module("preview"),
+    "video": _run_module("video"),
     "collect": _run_module("collect"),
     "train": _run_module("train"),
     "dashboard": _dashboard,

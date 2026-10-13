@@ -6,7 +6,7 @@ yawning (MAR), blink rate, head nod angle, and a live risk score auto-calibrated
 > **Learning project, not a certified safety device.** Glasses, low light and camera
 > angle affect accuracy. Never rely on it to stay safe on the road.
 
-**Status:** Phases 1 to 5 done (detection engine, calibration, risk score, alerts, robustness, dashboard and logging, packaging). Phase 6 stretch goals in progress: software night mode, a learned risk model and phone and talking detection are in.
+**Status:** Phases 1 to 5 done (detection engine, calibration, risk score, alerts, robustness, dashboard and logging, packaging). Phase 6 stretch goals in progress: software night mode, a learned risk model, phone and talking detection and video file analysis are in.
 See `docs/PROGRESS.md` for the roadmap and `docs/HOW_IT_WORKS.md` for the algorithms.
 
 ## Quick start (macOS)
@@ -69,6 +69,7 @@ src/drowsiness/
   cli.py          the driver-assist command (live, dashboard, export, qa, preview)
   dashboard.py    Streamlit dashboard (Sessions and Live pages)
   text.py         anti-aliased on-screen text that adapts to the background (bundled Inter font, OFL licence)
+  video.py        analyse a recorded video file
   activity.py     driving, talking or phone call from hand and mouth positions
   mlmodel.py      logistic-regression risk model, metrics, leave-one-session-out test
   collect.py      record labelled examples      train.py  train and report
@@ -104,6 +105,35 @@ driver-assist qa --night on --tag "dim room, no glasses"
 
 A normal webcam is not an infrared camera, so this helps in a dim room but cannot see in real darkness. Calibrate in the
 same light you will drive in, for example `--calibration-file ~/.driver_assist/night.json`.
+
+## Analysing a recorded video
+
+No camera needed. The detector reads the clip at its own frame rate, so a two minute clip counts as two minutes.
+
+```bash
+driver-assist video drive.mp4                          # prints a summary and saves it as a session
+driver-assist video drive.mp4 --out annotated.mp4      # also writes a copy with the on-screen display
+driver-assist video drive.mp4 --stride 2 --no-phone    # faster: every 2nd frame, no hand detection
+```
+
+The first seconds of the clip are used to calibrate (8 by default, change it with `--calibration-seconds`), so the driver
+should look at the road with eyes open at the start. The dashboard has the same thing on its Video page: upload a clip and
+get the risk timeline, the event log and the frame with the highest risk.
+
+## Free hosted demo
+
+The dashboard can be hosted for free on Streamlit Community Cloud, so there is a link to share. A hosted copy cannot use
+your camera, so it is meant for the Video page.
+
+1. Push the repository to GitHub (the files `requirements.txt`, `packages.txt` and `.streamlit/config.toml` are already there).
+2. Go to share.streamlit.io, sign in with GitHub and choose New app.
+3. Pick this repository, the main branch, and `app/dashboard.py` as the main file.
+4. Under advanced settings choose Python 3.11, then deploy.
+
+Things to know: free apps go to sleep when nobody uses them and wake up slowly, uploads are limited to 100 MB, and only the
+first five minutes of a clip are analysed. Uploaded clips are processed on the hosting server, so say that on the page and do
+not use footage of other people without their permission. The free tier has limited memory, so if the app fails to start,
+check the logs first.
 
 ## Phone and talking detection
 
