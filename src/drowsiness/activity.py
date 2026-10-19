@@ -148,13 +148,16 @@ class ActivityDetector:
     def __init__(self, config: Optional[Config] = None) -> None:
         self.config = config or Config()
         self._talk = TalkingDetector(self.config)
+        self._pose_talk = TalkingDetector(self.config)
         self.reset()
 
     def reset(self) -> None:
         self._talk.reset()
+        self._pose_talk.reset()
         self._pose_since: Optional[float] = None
         self._pose_off_since: Optional[float] = None
         self._in_call = False
+        self._talked = False
         self._geo: Optional[Geometry] = None
         self._geo_t = -1e9
         self._face_gone_since: Optional[float] = None
@@ -181,11 +184,17 @@ class ActivityDetector:
             pts.append((float(centre[0]), float(centre[1]), at_ear))
             pose = pose or at_ear
 
+        talking = self._talk.update(t, mar, usable and face is not None)
         if pose:
             self._pose_off_since = None
             if self._pose_since is None:
                 self._pose_since = t
-            if t - self._pose_since >= c.phone_pose_s:
+            # Only mouth movement while the hand is up counts, not talking from before it was raised.
+            self._talked = self._talked or self._pose_talk.update(t, mar, usable and face is not None)
+            held = t - self._pose_since
+            # Scratching an ear or resting a cheek looks the same as a phone, so a call needs either talking
+            # while the hand is up or a much longer hold.
+            if held >= c.phone_pose_s and (self._talked or held >= c.phone_listen_s):
                 self._in_call = True
         else:
             if self._pose_since is not None or self._in_call:
@@ -193,8 +202,9 @@ class ActivityDetector:
                     self._pose_off_since = t
                 if t - self._pose_off_since >= (c.phone_clear_s if self._in_call else 0.4):
                     self._pose_since, self._pose_off_since, self._in_call = None, None, False
+                    self._talked = False
+                    self._pose_talk.reset()
 
-        talking = self._talk.update(t, mar, usable and face is not None)
         phone_s = (t - self._pose_since) if (self._in_call and self._pose_since is not None) else 0.0
         if self._in_call:
             activity = Activity.PHONE_CALL

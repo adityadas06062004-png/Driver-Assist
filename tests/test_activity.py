@@ -40,7 +40,7 @@ def run(det, t, seconds, hands, mar=0.05, fps=30, f=None):
 
 
 def test_phone_call_needs_the_pose_to_be_held_then_ends_after_it_is_dropped():
-    det = ActivityDetector()
+    det = ActivityDetector(Config(phone_listen_s=0.0))
     hand = [make_hand(190, 260)]
     t, out = run(det, 0, 1.0, hand)
     assert out.hand_at_ear and out.activity == Activity.DRIVING          # not long enough yet
@@ -111,7 +111,7 @@ def feed(mon, t, seconds, hands, **kw):
 
 
 def test_monitor_warns_after_five_seconds_on_the_phone():
-    mon = Monitor(calibration=CAL)
+    mon = Monitor(Config(phone_listen_s=0.0), calibration=CAL)
     t, out = feed(mon, 0, 2, [])
     t, out = feed(mon, t, 4, [make_hand(190, 260)])
     assert out[-1].activity.activity == Activity.PHONE_CALL and out[-1].alert.level == Level.OK
@@ -123,7 +123,7 @@ def test_monitor_warns_after_five_seconds_on_the_phone():
 
 
 def test_phone_warning_can_be_turned_off_and_detection_can_be_disabled():
-    mon = Monitor(Config(phone_alert_s=0), calibration=CAL)
+    mon = Monitor(Config(phone_alert_s=0, phone_listen_s=0.0), calibration=CAL)
     t, out = feed(mon, 0, 10, [make_hand(190, 260)])
     assert out[-1].activity.activity == Activity.PHONE_CALL and out[-1].alert.level == Level.OK
     mon = Monitor(Config(detect_phone=False), calibration=CAL)
@@ -141,7 +141,7 @@ def test_recorder_logs_a_phone_call_and_the_summary_counts_it():
     from drowsiness import SessionRecorder, Storage
     db = Storage(":memory:")
     rec = SessionRecorder(db)
-    mon = Monitor(calibration=CAL)
+    mon = Monitor(Config(phone_listen_s=0.0), calibration=CAL)
     t = 0.0
     pts = add_head_landmarks(make_face(ear=0.26))
     for hands, secs in (([], 1), ([make_hand(190, 260)], 4), ([], 3)):
@@ -155,7 +155,7 @@ def test_recorder_logs_a_phone_call_and_the_summary_counts_it():
 
 def test_overlay_draws_the_activity_and_hand_markers():
     from drowsiness.overlay import draw_hud
-    mon = Monitor(calibration=CAL)
+    mon = Monitor(Config(phone_listen_s=0.0), calibration=CAL)
     t, out = feed(mon, 0, 4, [make_hand(190, 260)])
     img = np.zeros((480, 640, 3), np.uint8)
     draw_hud(img, out[-1], t)
@@ -204,7 +204,7 @@ def test_pipeline_passes_hands_to_the_monitor():
 
 
 def test_phone_pose_is_still_recognised_when_the_hand_hides_the_face():
-    det = ActivityDetector()
+    det = ActivityDetector(Config(phone_listen_s=0.0))
     hand = [make_hand(190, 260)]
     t, _ = run(det, 0, 1.0, [])                            # face seen, hands down
     out = None
@@ -271,3 +271,31 @@ def test_qa_names_the_cause_of_a_false_alarm():
          Sample(2.7, True, True, 0.25, 120, 300, 0.0, 2, 0, cause="head down")]
     r = summarize("Talking", "quiet", s)
     assert not r.passed and "FALSE ALARM at 2.7s (head down)" in r.detail
+
+
+def test_a_hand_at_the_ear_without_talking_needs_a_long_hold_to_count_as_a_call():
+    det = ActivityDetector()
+    hand = [make_hand(190, 260)]
+    t, out = run(det, 0, 6.0, hand)
+    assert out.hand_at_ear and out.activity == Activity.DRIVING          # a long scratch or a rested cheek
+    t, out = run(det, t, 3.0, hand)
+    assert out.activity == Activity.PHONE_CALL                           # held past 8 s, so probably a call
+
+
+def test_talking_with_the_hand_at_the_ear_is_recognised_quickly():
+    det = ActivityDetector()
+    t, out = 0.0, None
+    for _ in range(int(4 * 30)):
+        out = det.update(t, face(), [make_hand(190, 260)], 0.12 + 0.10 * math.sin(2 * math.pi * 3 * t))
+        t += 1 / 30
+    assert out.activity == Activity.PHONE_CALL
+
+
+def test_talking_before_the_hand_goes_up_does_not_count_as_a_call():
+    det = ActivityDetector()
+    t = 0.0
+    for _ in range(int(4 * 30)):
+        det.update(t, face(), [], 0.12 + 0.10 * math.sin(2 * math.pi * 3 * t))
+        t += 1 / 30
+    t, out = run(det, t, 3.0, [make_hand(190, 260)])
+    assert out.activity != Activity.PHONE_CALL

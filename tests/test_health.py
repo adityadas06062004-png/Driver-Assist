@@ -90,3 +90,21 @@ def test_flickering_condition_is_debounced():
 def test_low_fps_reported():
     t, out = run(HealthMonitor(), 0, 1.5, face_present=True, stats=GOOD, fps=6.0)
     assert Issue.LOW_FPS in out.issues and out.reliable
+
+
+def test_a_face_that_keeps_dropping_in_and_out_counts_as_lost():
+    h = HealthMonitor()
+    t, out = 0.0, None
+    for i in range(80):                                   # 8 s, present and absent every 0.3 s
+        out = h.update(t, face_present=(i // 3) % 2 == 0, stats=GOOD)
+        t += 0.1
+    assert Issue.NO_FACE in out.issues and out.level >= Level.WARNING
+
+
+def test_a_brief_flicker_in_a_steady_face_is_ignored():
+    h = HealthMonitor()
+    t, out = 0.0, None
+    for i in range(80):
+        out = h.update(t, face_present=not (i % 20 == 5), stats=GOOD)   # one dropped frame every 2 s
+        t += 0.1
+    assert Issue.NO_FACE not in out.issues and out.level == Level.OK

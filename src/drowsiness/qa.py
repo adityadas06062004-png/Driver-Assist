@@ -40,8 +40,8 @@ SCENARIOS: List[Tuple[str, str, int, str]] = [
     ("Yawn", "Yawn widely, twice.", 10, "yawn"),
     ("Eyes closed", "Close your eyes and keep them closed.", 6, "alarm"),
     ("Head drop", "Let your head drop forward and hold it down.", 6, "alarm"),
-    ("Touch your face", "Scratch your ear or cheek for a second, then put your hand down. Repeat.", 8, "no_phone"),
-    ("Phone call", "Hold your hand (or a phone) to your ear and talk, like a call.", 8, "phone"),
+    ("Touch your face", "Touch your cheek or ear for about 1 second, lower your hand. Repeat 4 times.", 10, "no_phone"),
+    ("Phone call", "Hold your phone (or hand) to your ear and keep talking, like a call.", 12, "phone"),
 ]
 
 
@@ -59,6 +59,9 @@ class Sample:
     issues: frozenset = field(default_factory=frozenset)
     activity: str = "driving"
     cause: str = ""
+    hand_at_ear: bool = False
+    talking: bool = False
+    hidden: bool = False
 
 
 @dataclass
@@ -87,6 +90,11 @@ def _median(values: Iterable[float]) -> float:
     return statistics.median(vals) if vals else NAN
 
 
+def _span(samples, test) -> float:
+    times = [s.t for s in samples if test(s)]
+    return (max(times) - min(times)) if times else 0.0
+
+
 def summarize(name: str, expect: str, samples: List[Sample]) -> ScenarioResult:
     n = len(samples)
     if n == 0:
@@ -103,15 +111,18 @@ def summarize(name: str, expect: str, samples: List[Sample]) -> ScenarioResult:
         detail = "no alarm" if passed else f"FALSE ALARM at {first_warn:.1f}s" + (f" ({cause})" if cause else "")
     elif expect == "alarm":
         passed = first_warn is not None
-        detail = (f"alarm after {first_warn:.1f}s (includes your reaction time)"
-                  if passed else "NO ALARM")
+        hidden = _span(samples, lambda s: s.hidden)
+        note = f" (a hand excused the missing face for {hidden:.0f}s)" if hidden else ""
+        detail = (f"alarm after {first_warn:.1f}s (includes your reaction time)" if passed else "NO ALARM" + note)
     elif expect == "phone":
         first = next((s.t - t0 for s in samples if s.activity == "phone_call"), None)
         passed = first is not None
         detail = f"phone pose recognised after {first:.1f}s" if passed else "NOT RECOGNISED"
     elif expect == "no_phone":
         passed = not any(s.activity == "phone_call" for s in samples)
-        detail = "no phone call flagged" if passed else "FALSE PHONE CALL"
+        held = _span(samples, lambda s: s.hand_at_ear)
+        talked = "yes" if any(s.talking for s in samples if s.hand_at_ear) else "no"
+        detail = "no phone call flagged" if passed else f"FALSE PHONE CALL (hand at ear {held:.0f}s, talking: {talked})"
     else:  # "yawn"
         passed = yawns >= 1
         detail = f"{yawns} yawn(s) counted"
@@ -157,7 +168,10 @@ def _sample(step, step_cfg) -> Sample:
         yawns=res.yawn_count,
         issues=frozenset(i.value for i in step.state.health.issues) if step.state.health else frozenset(),
         activity=step.state.activity.activity.value if step.state.activity else "driving",
-        cause=dominant_cause(step.state.risk.components, step_cfg, res.nodding) if step.state.risk else "")
+        cause=dominant_cause(step.state.risk.components, step_cfg, res.nodding) if step.state.risk else "",
+        hand_at_ear=bool(step.state.activity and step.state.activity.hand_at_ear),
+        talking=bool(step.state.activity and step.state.activity.talking),
+        hidden=bool(step.state.activity and step.state.activity.hand_hides_face))
 
 
 def main() -> None:

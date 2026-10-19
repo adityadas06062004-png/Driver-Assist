@@ -6,7 +6,7 @@ yawning (MAR), blink rate, head nod angle, and a live risk score auto-calibrated
 > **Learning project, not a certified safety device.** Glasses, low light and camera
 > angle affect accuracy. Never rely on it to stay safe on the road.
 
-**Status:** Phases 1 to 5 done (detection engine, calibration, risk score, alerts, robustness, dashboard and logging, packaging). Phase 6 stretch goals in progress: software night mode, a learned risk model, phone and talking detection and video file analysis are in.
+**Status:** Phases 1 to 5 done (detection engine, calibration, risk score, alerts, robustness, dashboard and logging, packaging). Phase 6 stretch goals in progress: software night mode, a learned risk model, phone and talking detection, video file analysis and a redesigned dashboard are in.
 See `docs/PROGRESS.md` for the roadmap and `docs/HOW_IT_WORKS.md` for the algorithms.
 
 ## Quick start (macOS)
@@ -70,6 +70,8 @@ src/drowsiness/
   dashboard.py    Streamlit dashboard (Sessions and Live pages)
   text.py         anti-aliased on-screen text that adapts to the background (bundled Inter font, OFL licence)
   video.py        analyse a recorded video file
+  insights.py     score, label and plain-language highlights for a session
+  ui.py           dashboard colours, CSS and HTML building blocks
   activity.py     driving, talking or phone call from hand and mouth positions
   mlmodel.py      logistic-regression risk model, metrics, leave-one-session-out test
   collect.py      record labelled examples      train.py  train and report
@@ -105,6 +107,18 @@ driver-assist qa --night on --tag "dim room, no glasses"
 
 A normal webcam is not an infrared camera, so this helps in a dim room but cannot see in real darkness. Calibrate in the
 same light you will drive in, for example `--calibration-file ~/.driver_assist/night.json`.
+
+## The dashboard
+
+`driver-assist dashboard` opens a browser page with five sections, and it follows your light or dark mode.
+
+1. Overview: one session in detail. A score out of 100 with a label (Alert, Mostly alert, Signs of fatigue, High fatigue risk),
+   how long you spent at each alert level, eight summary cards, and tabs for the risk timeline (with dots for alarms, yawns,
+   nods, phone use and picture issues), plain-language highlights, the event log, the eye and mouth signals, and CSV export.
+2. Trends: every session side by side, with a risk sparkline for each.
+3. Video: upload a clip and get the same report.
+4. Live: monitor with the camera of the computer running the app.
+5. Guide: what the levels and signals mean, tips for accurate results, privacy and limits.
 
 ## Analysing a recorded video
 

@@ -79,6 +79,15 @@ contrast ratio. Coloured labels (alert levels) keep their hue but are lightened 
 4.5. A soft halo in the opposite tone keeps text readable over busy backgrounds. Glyph masks are cached, which keeps all the
 text on a frame to about 6 ms. If Pillow or the font is missing it falls back to OpenCV text.
 
+## Dashboard design
+
+`ui.py` holds the colours, CSS and small HTML blocks (cards, hero, level bar, insight cards) as plain strings, so they can
+be tested without Streamlit. Colours that sit on the page come from Streamlit's own theme variables, which is why light and
+dark mode both work, while the alert colours stay fixed so a level always looks the same. `insights.py` turns a session into
+a score (100 minus the average risk), a label and a short list of highlights using simple rules: the peak and what was happening
+around it, the longest stretch at warning level, repeated yawns or nods, time on the phone, and advice for the picture issues
+that occurred. Fonts come from Google Fonts when online and fall back to the system font otherwise.
+
 ## Video files
 
 `video.py` reads a file with OpenCV and gives every frame the timestamp `index / fps`, so all the time-based logic (PERCLOS,

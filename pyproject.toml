@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "driver-assist"
-version = "0.9.0"
+version = "1.0.0"
 description = "Real-time driver drowsiness detection (EAR, PERCLOS, MAR, blink rate, head nod) with MediaPipe Face Mesh"
 readme = "README.md"
 requires-python = ">=3.9,<3.13"
@@ -14,8 +14,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dashboard = ["streamlit>=1.30"]
-dev = ["pytest>=8", "ruff>=0.5", "streamlit>=1.30"]
+dashboard = ["streamlit>=1.32"]
+dev = ["pytest>=8", "ruff>=0.5", "streamlit>=1.32"]
 
 [project.scripts]
 driver-assist = "drowsiness.cli:main"
@@ -35,3 +35,7 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/drowsiness/ui.py" = ["E501"]          # long CSS and HTML strings
+"src/drowsiness/dashboard.py" = ["E501"]   # interface text

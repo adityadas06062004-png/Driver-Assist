@@ -98,4 +98,7 @@ class Config:
     talk_min_reversals: int = 4            # this many open/close swings in the window = talking
     phone_face_memory_s: float = 8.0       # keep using the last seen face outline this long when a hand hides the face
     hand_hides_face_max_s: float = 8.0     # a hand over the face excuses "face not visible" for this long at most
+    phone_listen_s: float = 8.0            # no talking: a hand at the ear needs this long to count as a call
+    face_flicker_window_s: float = 3.0     # a face that keeps dropping in and out within this window...
+    face_flicker_fraction: float = 0.5     # ...and is missing at least this share of it counts as lost
 

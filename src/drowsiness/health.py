@@ -7,9 +7,10 @@ Bad data should not cause false alarms, and a driver who vanishes from view
 from __future__ import annotations
 
 import math
+from collections import deque
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Optional, Set, Tuple
+from typing import Deque, Dict, Optional, Set, Tuple
 
 from .alerts import Level
 from .config import Config
@@ -60,6 +61,8 @@ class HealthMonitor:
         self._on_since: Dict[Issue, float] = {}
         self._off_since: Dict[Issue, float] = {}
         self._active: Set[Issue] = set()
+        self._seen: Deque[Tuple[float, bool]] = deque()
+        self._flickering = False
 
     def _persist_s(self, issue: Issue) -> float:
         c = self.config
@@ -75,7 +78,25 @@ class HealthMonitor:
         c = self.config
         raw = {i: False for i in Issue}
         raw[Issue.CAMERA_LOST] = not camera_ok
-        raw[Issue.NO_FACE] = camera_ok and not face_present and not face_hidden_by_hand
+        self._seen.append((t, face_present))
+        while self._seen and t - self._seen[0][0] > c.face_flicker_window_s:
+            self._seen.popleft()
+        flicker = False
+        if camera_ok and len(self._seen) > 5 and t - self._seen[0][0] >= 0.8 * c.face_flicker_window_s:
+            seen = list(self._seen)
+            missing = sum(1 for _, ok in seen if not ok) / len(seen)
+            switches = sum(1 for (_, a), (_, b) in zip(seen, seen[1:]) if a != b)
+            # Flicker means dropping in and out repeatedly. One clean loss followed by a return is not flicker.
+            if missing >= c.face_flicker_fraction and switches >= 3:
+                self._flickering = True
+        if self._flickering:
+            # Stay in the "lost" state until the face has been steady for a second.
+            steady = all(ok for ts, ok in self._seen if ts >= t - 1.0)
+            if steady and face_present and t - self._seen[0][0] >= 1.0:
+                self._flickering = False
+        flicker = self._flickering and camera_ok
+        lost = (not face_present) or flicker
+        raw[Issue.NO_FACE] = camera_ok and lost and not face_hidden_by_hand
         if stats is not None:
             raw[Issue.LOW_LIGHT] = stats.brightness < c.low_light_brightness
             if face_present and not math.isnan(stats.sharpness):
